@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blind Box Verifier</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f7f7f7;
+      text-align: center;
+      padding: 2rem;
+    }
+    #login, #dev-portal, #generate-section {
+      display: none;
+      margin-top: 1rem;
+    }
+    input, button, select {
+      padding: 0.5rem;
+      margin: 0.5rem;
+    }
+    table {
+      width: 100%;
+      margin-top: 1rem;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Blind Box Code Verifier</h1>
+  <input id="codeInput" type="text" placeholder="Enter your code here" />
+  <button onclick="checkCode()">Verify</button>
+
+  <div id="login">
+    <h3>Developer Login</h3>
+    <input id="username" type="text" placeholder="Username" /><br />
+    <input id="password" type="password" placeholder="Password" /><br />
+    <button onclick="loginDev()">Login</button>
+  </div>
+
+  <div id="dev-portal">
+    <h2>Developer Portal</h2>
+    <select id="versionSelect"></select>
+    <input id="newVersionInput" type="text" placeholder="Add new version" />
+    <button onclick="addVersion()">Add Version</button>
+    <br />
+    <button onclick="generateCode()">Generate Code</button>
+    <button onclick="downloadCSV()">Download CSV</button>
+    <table id="codeTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Code</th>
+          <th>Version</th>
+          <th>Verified</th>
+          <th>Download</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+    import { getDatabase, ref, set, get, push, onValue, update } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuNcnCq0zzjxbzweHjJVeimVK7WqFsD2k",
+      authDomain: "mochi-cat-verifier.firebaseapp.com",
+      databaseURL: "https://mochi-cat-verifier-default-rtdb.firebaseio.com",
+      projectId: "mochi-cat-verifier",
+      storageBucket: "mochi-cat-verifier.firebasestorage.app",
+      messagingSenderId: "953411942970",
+      appId: "1:953411942970:web:105bbdf13b3ccf5b87d303",
+      measurementId: "G-SDXJ49ZXFK"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const codeInput = document.getElementById("codeInput");
+    const loginDiv = document.getElementById("login");
+    const devPortal = document.getElementById("dev-portal");
+    const codeTable = document.querySelector("#codeTable tbody");
+    const versionSelect = document.getElementById("versionSelect");
+    const newVersionInput = document.getElementById("newVersionInput");
+
+    function checkCode() {
+      const input = codeInput.value.trim();
+      if (input === "DEV") {
+        loginDiv.style.display = "block";
+        return;
+      }
+      const codeRef = ref(db, `codes/${input}`);
+      get(codeRef).then(snapshot => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          alert(`✅ Authentic!\nVersion: ${data.version}\nFirst verified: ${data.timestamp}`);
+          update(codeRef, { verified: true });
+        } else {
+          alert("❌ Code not found.");
+        }
+      });
+    }
+
+    window.loginDev = () => {
+      const user = document.getElementById("username").value;
+      const pass = document.getElementById("password").value;
+      if (user === "ADMINONLY" && pass === "CRYPTOCOLLECTOR2025!") {
+        loginDiv.style.display = "none";
+        devPortal.style.display = "block";
+        loadCodes();
+        loadVersions();
+      } else {
+        alert("Wrong credentials!");
+      }
+    };
+
+    function loadCodes() {
+      const codesRef = ref(db, "codes");
+      onValue(codesRef, snapshot => {
+        codeTable.innerHTML = "";
+        let index = 1;
+        snapshot.forEach(child => {
+          const val = child.val();
+          const row = `<tr>
+            <td>${index++}</td>
+            <td>${child.key}</td>
+            <td>${val.version}</td>
+            <td>${val.verified ? "Yes" : "No"}</td>
+            <td>${val.downloaded ? "Yes" : "No"}</td>
+            <td>${val.timestamp || "-"}</td>
+          </tr>`;
+          codeTable.innerHTML += row;
+        });
+      });
+    }
+
+    function loadVersions() {
+      const verRef = ref(db, "versions");
+      onValue(verRef, snapshot => {
+        versionSelect.innerHTML = "";
+        snapshot.forEach(child => {
+          const opt = document.createElement("option");
+          opt.value = opt.textContent = child.key;
+          versionSelect.appendChild(opt);
+        });
+      });
+    }
+
+    window.addVersion = () => {
+      const ver = newVersionInput.value.trim();
+      if (ver) {
+        set(ref(db, `versions/${ver}`), true);
+        newVersionInput.value = "";
+      }
+    };
+
+    window.generateCode = () => {
+      const version = versionSelect.value;
+      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const timestamp = new Date().toLocaleString();
+      set(ref(db, `codes/${code}`), {
+        version,
+        verified: false,
+        downloaded: false,
+        timestamp
+      });
+    };
+
+    window.downloadCSV = () => {
+      const rows = ["Number,Code,Version,Verified,Downloaded,Timestamp"];
+      const codesRef = ref(db, "codes");
+      get(codesRef).then(snapshot => {
+        let index = 1;
+        snapshot.forEach(child => {
+          const d = child.val();
+          rows.push(`${index++},${child.key},${d.version},${d.verified},${d.downloaded},${d.timestamp || "-"}`);
+        });
+        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "codes.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    };
+  </script>
+</body>
+</html>
